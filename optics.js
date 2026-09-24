@@ -58,8 +58,12 @@
     const base=r0.y+distance*r0.u,coefficient=r1.y+distance*r1.u-base;
     if(result.kind==='real' && result.imageX>=EYE-1e-8)return {status:'converging',angle:null};
     if(Math.abs(coefficient)<1e-9)return {status:'blocked',angle:null};
-    const ray=trace(objectX,lenses,-base/coefficient);
-    return {status:ray.blocked?'blocked':'clear',angle:Math.atan(-ray.u)};
+    // A clipped flame tip does not mean the whole candle is invisible. Keep the
+    // ideal projection and clip its visible area at every lens aperture instead.
+    const ray=trace(objectX,lenses,-base/coefficient,HEIGHT,false);
+    const maxHeight=Math.max(0,...ray.points.slice(1).map(p=>Math.abs(p.y)));
+    const fieldSlope=maxHeight>1e-9?Math.abs(ray.u)*APERTURE/maxHeight:Infinity;
+    return {status:maxHeight>APERTURE?'blocked':'clear',angle:Math.atan(-ray.u),slope:-ray.u,fieldSlope};
   }
   const api={HEIGHT,EYE,APERTURE,calculate,eyeRay,observation,trace,system,systemObservation};
   if(typeof module!=='undefined' && module.exports) module.exports=api;

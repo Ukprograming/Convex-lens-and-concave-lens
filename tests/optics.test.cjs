@@ -87,3 +87,31 @@ test('three mixed lenses: final image and total magnification, independent of ar
   close(r.stages[1].imageX,32.5);close(r.b,475/9);close(r.imageX,1195/9);close(r.m,5/12);
   assert.equal(r.kind,'real');
 });
+
+test('clipped flame tip keeps a finite projection and visible lower candle',()=>{
+  const lenses=[{id:1,x:0,f:20}],r=O.system(-24,lenses);
+  const obs=O.systemObservation(-24,lenses,r);
+  assert.equal(obs.status,'blocked');
+  close(obs.slope,r.imageY/(O.EYE-r.imageX));
+  assert.ok(Math.abs(obs.slope)*400>220);
+  const ray=O.eyeRay('convex',24,20,1);
+  assert.equal(ray.visible,true);
+  close(obs.fieldSlope,O.APERTURE/O.EYE);
+});
+
+test('infinite image has finite view; nearby real image fills the view continuously',()=>{
+  const lenses=[{id:1,x:0,f:20}];
+  close(O.systemObservation(-20,lenses,O.system(-20,lenses)).slope,O.HEIGHT/20);
+  const near=O.systemObservation(-23.34,lenses,O.system(-23.34,lenses));
+  const far=O.systemObservation(-24,lenses,O.system(-24,lenses));
+  assert.ok(Number.isFinite(near.slope));
+  assert.ok(Math.abs(near.slope)>Math.abs(far.slope)*50);
+});
+
+test('compound projection reaches the final lens even with a clipped tip',()=>{
+  const lenses=[{id:1,x:0,f:20},{id:2,x:50,f:20}];
+  const r=O.system(-60,lenses),obs=O.systemObservation(-60,lenses,r);
+  assert.equal(r.kind,'infinity');
+  close(obs.slope,-.75);
+  assert.ok(obs.fieldSlope>0);
+});

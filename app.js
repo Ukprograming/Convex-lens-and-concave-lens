@@ -5,6 +5,7 @@
   const initial=()=>({objectX:-60,lenses:[{id:1,x:0,f:20}],selected:1,nextId:2,none:false});
   let state=initial(),drag=null;
   const X=x=>480+3*x,Y=y=>240-3*y;
+  let viewport={left:0,top:0,width:960,height:470};
   const clamp=(n,lo,hi)=>Math.max(lo,Math.min(hi,n));
   const fmt=n=>Number.isFinite(n)?Number(n.toFixed(1)).toLocaleString('ja-JP'):'∞';
   const selected=()=>state.lenses.find(l=>l.id===state.selected);
@@ -13,6 +14,32 @@
   const label=(x,y,t,extra='')=>`<text x="${x}" y="${y}" text-anchor="middle" ${extra}>${t}</text>`;
   function line(x1,y1,x2,y2,color='#cb8731',dash=false,arrow=false){
     return `<line x1="${X(x1)}" y1="${Y(y1)}" x2="${X(x2)}" y2="${Y(y2)}" stroke="${color}" stroke-width="1.8" ${dash?'stroke-dasharray="5 5" opacity=".65"':''} ${arrow?'marker-end="url(#arrow-amber)"':''}/>`;
+  }
+  // Clip the geometry before adding the arrow so the tip stays inside the view.
+  function rayLine(p,q,terminal=false){
+    const left=(viewport.left+2-480)/3,right=(viewport.left+viewport.width-2-480)/3;
+    const bottom=(240-viewport.top-viewport.height+2)/3,top=(240-viewport.top-2)/3;
+    const dx=q.x-p.x,dy=q.y-p.y;
+    let enter=0,exit=1;
+    for(const [origin,delta,min,max] of [[p.x,dx,left,right],[p.y,dy,bottom,top]]){
+      if(Math.abs(delta)<1e-12){if(origin<min||origin>max)return '';continue;}
+      const a=(min-origin)/delta,b=(max-origin)/delta;
+      enter=Math.max(enter,Math.min(a,b));exit=Math.min(exit,Math.max(a,b));
+    }
+    if(exit<=enter)return '';
+    return line(p.x+enter*dx,p.y+enter*dy,p.x+exit*dx,p.y+exit*dy,'#cb8731',false,terminal||exit<1);
+  }
+  function resizeScene(){
+    const {width,height}=$('scene').getBoundingClientRect();
+    if(!width||!height)return;
+    const scale=Math.min(width/960,height/470);
+    viewport={left:480-width/scale/2,top:235-height/scale/2,width:width/scale,height:height/scale};
+    $('scene').setAttribute('viewBox',`${viewport.left} ${viewport.top} ${viewport.width} ${viewport.height}`);
+    for(const id of ['grid-area','clip-area']){
+      const rect=$(id);
+      for(const [key,value] of Object.entries({x:viewport.left,y:viewport.top,width:viewport.width,height:viewport.height}))rect.setAttribute(key,value);
+    }
+    render();
   }
   // The flame tip is exactly 3 * HEIGHT above the axis for ray/image consistency.
   function candle(x,y,scale=1,ghost=false){
@@ -30,7 +57,7 @@
     const list=active(),sel=selected();
     $('lens').innerHTML=list.map(l=>{
       const chosen=l.id===state.selected,[lo,hi]=lensLimits(l),name=l.f>0?'凸レンズ':'凹レンズ';
-      return `<g transform="translate(${X(l.x)} 240)" class="drag-handle lens-handle" data-drag="lens" data-id="${l.id}" tabindex="0" role="slider" aria-label="レンズ${l.id}の位置" aria-valuemin="${lo}" aria-valuemax="${hi}" aria-valuenow="${l.x}"><title>${name}${l.id}：ドラッグで移動、選択して種類を変更</title><rect x="-26" y="-161" width="52" height="322" rx="10" fill="transparent"/><path d="${l.f>0?'M0 -150 Q39 0 0 150 Q-39 0 0 -150Z':'M-19 -150 Q10 0 -19 150 H19 Q-10 0 19 -150Z'}" fill="url(#glass)" stroke="${chosen?'#157e76':'#89b6b2'}" stroke-width="${chosen?2.5:1.3}"/>${label(0,-170,list.length===1?name:`${name} ${l.id}`,`style="fill:${chosen?'#157e76':'#6b7d85'}"`)}${chosen?label(0,177,'↔','style="fill:#157e76;font-size:20px"'):''}</g>`;
+      return `<g transform="translate(${X(l.x)} 240)" class="drag-handle lens-handle" data-drag="lens" data-id="${l.id}" tabindex="0" role="slider" aria-label="レンズ${l.id}の位置" aria-valuemin="${lo}" aria-valuemax="${hi}" aria-valuenow="${l.x}"><title>${name}${l.id}：ドラッグで移動、選択して種類を変更</title><rect x="-26" y="-161" width="52" height="322" rx="10" fill="transparent"/><path d="${l.f>0?'M0 -150 Q39 0 0 150 Q-39 0 0 -150Z':'M-19 -150 Q10 0 -19 150 H19 Q-10 0 19 -150Z'}" fill="url(#glass)" stroke="${chosen?'#157e76':'#89b6b2'}" stroke-width="${chosen?2.5:1.3}"/></g>`;
     }).join('');
     // Only the selected lens has focus handles, preventing overlaps in compound systems.
     $('focus-handles').innerHTML=state.none?'':[-1,1].map(sign=>`<g class="drag-handle focus-handle" data-drag="focus" data-id="${sel.id}" data-sign="${sign}" transform="translate(${X(sel.x+sign*Math.abs(sel.f))} 240)" tabindex="0" role="slider" aria-label="レンズ${sel.id}の${sign<0?'左':'右'}焦点F" aria-valuemin="10" aria-valuemax="50" aria-valuenow="${Math.abs(sel.f)}"><title>焦点Fをドラッグして焦点距離を変更</title><circle r="19" fill="transparent"/><circle r="7" fill="#e5f3ee" stroke="#157e76" stroke-width="2"/>${label(0,29,'F','style="fill:#157e76;font-size:17px;font-weight:bold"')}</g>`).join('');
@@ -51,45 +78,67 @@
       for(const slope of slopes){
         const ray=O.trace(state.objectX,lenses,slope);
         for(let i=1;i<ray.points.length;i++){
-          const p=ray.points[i-1],q=ray.points[i];rays+=line(p.x,p.y,q.x,q.y);
+          const p=ray.points[i-1],q=ray.points[i];rays+=rayLine(p,q);
         }
         if(ray.blocked)continue;
-        rays+=line(ray.x,ray.y,153,ray.y+ray.u*(153-ray.x),'#cb8731',false,true);
+        const edgeX=(viewport.left+viewport.width-480)/3;
+        rays+=rayLine(ray,{x:edgeX,y:ray.y+ray.u*(edgeX-ray.x)},true);
         if(result.kind==='virtual'){
-          const x=Math.max(-153,result.imageX);
+          const x=Math.max((viewport.left-480)/3,result.imageX);
           rays+=line(ray.x,ray.y,x,ray.y+ray.u*(x-ray.x),'#9c829f',true);
         }
       }
     }
     $('rays').innerHTML=rays;
   }
+  function viewGrid(result){
+    // Equally spaced depth planes project ever closer to the vanishing point.
+    let grid='<rect width="220" height="220" fill="#f7faf9"/><g fill="none" stroke="#d4e2dd" stroke-width=".8">';
+    for(const [x,y] of [[0,0],[55,0],[165,0],[220,0],[220,55],[220,165],[220,220],[165,220],[55,220],[0,220],[0,165],[0,55]])grid+=`<path d="M110 110 L${x} ${y}"/>`;
+    for(let depth=100;depth<=1000;depth+=100){
+      const half=400*25/depth;
+      grid+=`<rect x="${110-half}" y="${110-half}" width="${2*half}" height="${2*half}" opacity="${Math.max(.18,1-depth/1200)}"/>`;
+    }
+    grid+='</g><path d="M104 110 H116 M110 104 V116" stroke="#a3bcb2" stroke-width=".8"/>';
+    if(Number.isFinite(result.imageX) && result.imageX<O.EYE){
+      const half=Math.min(10000,400*25/(O.EYE-result.imageX));
+      grid+=`<rect data-image-plane="true" x="${110-half}" y="${110-half}" width="${2*half}" height="${2*half}" fill="none" stroke="#8baea0" stroke-dasharray="3 4" stroke-width="1.2"/>`;
+    }
+    return grid;
+  }
   function drawView(result,obs){
-    let svg='<defs><filter id="defocus" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="9"/></filter></defs><path d="M20 110 H200" stroke="#edf1ef"/>';
+    const radius=Number.isFinite(obs.fieldSlope)?400*obs.fieldSlope:1000;
+    let svg=`<defs><filter id="defocus" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="9"/></filter><clipPath id="view-frame"><rect width="220" height="220"/></clipPath><clipPath id="view-aperture"><circle cx="110" cy="110" r="${radius}"/></clipPath></defs><g clip-path="url(#view-frame)">${viewGrid(result)}`;
     let title='';
     if(obs.status==='converging'){
       const scale=3.4+1.8*Math.min(1,O.EYE/Math.max(O.EYE,result.imageX));
       svg+=`<g filter="url(#defocus)" opacity=".85" data-blurred="true">${candle(110,80+90*scale,scale)}</g>`;title='ピンぼけ（模式図）';
-    }else if(obs.status==='clear'){
-      svg+=candle(110,110,obs.angle*400/90);title=obs.angle>=0?'正立':'倒立';
-    }else svg+=label(110,114,'視野外','style="font-size:14px;fill:#81928e"');
-    $('view').innerHTML=svg;$('view').setAttribute('aria-label',title||'視野外');$('view-title').textContent=title;
+    }else if(Number.isFinite(obs.slope)){
+      // Perspective projection uses tan(angle), not angle: large images grow
+      // beyond the viewport instead of saturating or disappearing altogether.
+      svg+=`<g clip-path="url(#view-aperture)" data-projected="true">${candle(110,110,obs.slope*400/90)}</g>`;
+      title=obs.slope>=0?'正立':'倒立';
+      if(result.kind==='infinity')title+='・無限遠';
+    }
+    svg+='</g>';
+    $('view').innerHTML=svg;$('view').setAttribute('aria-label',`${title}のろうそく。遠近グリッドと像の位置の補助枠`);$('view-title').textContent=title;
   }
   function render(){
     const lenses=active(),result=O.system(state.objectX,lenses),sel=selected();
     document.querySelectorAll('[data-mode]').forEach(btn=>btn.setAttribute('aria-pressed',String(btn.dataset.mode===(state.none?'none':sel.f>0?'convex':'concave'))));
     $('add-lens').disabled=!newLensPosition() || state.lenses.length>=4;
     $('remove-lens').hidden=state.lenses.length===1 || state.none;
-    $('image-badge').textContent=state.none?'光の直進':`${lenses.length>1?`選択：レンズ${sel.id} · `:''}${result.kind==='infinity'?'像は無限遠':result.kind==='real'?'実像':'虚像'}`;
+    $('image-badge').textContent=!state.none && lenses.length>1?`選択：レンズ${sel.id}`:'';
     $('formula-panel').hidden=state.none || !$('show-formula').checked;
     $('formula-title').textContent=lenses.length>1?`レンズ ${sel.id} の式`:'レンズの式';
     $('observer-panel').hidden=!$('show-view').checked;
-    let axis=line(-153,0,153,0,'#b8c6cc');
+    let axis=line((viewport.left-480)/3,0,(viewport.left+viewport.width-480)/3,0,'#b8c6cc');
     for(let x=-140;x<=140;x+=10)axis+=line(x,-1,x,1,'#c2cdd2');
     $('axis').innerHTML=axis+label(923,265,'光軸');
     drawLenses();drawRays(lenses,result);
     let img='';
     if(result.kind==='real'||result.kind==='virtual'){
-      if(result.imageX>=-150 && result.imageX<=150)img=candle(X(result.imageX),240,result.m,true)+label(X(result.imageX),result.m>0?Math.max(60,Y(result.imageY)-16):Math.min(385,Y(result.imageY)+22),lenses.length>1?'最終像':result.kind==='real'?'実像':'虚像','style="fill:#9374a4"');
+      if(result.imageX>=-150 && result.imageX<=150)img=candle(X(result.imageX),240,result.m,true);
       else img=label(result.imageX<0?130:800,75,`${result.imageX<0?'←':'→'} 像は図の外`,'style="fill:#9374a4"');
     }
     if(result.kind==='infinity')img=label(740,75,'像は無限遠');
@@ -97,7 +146,7 @@
     $('candle').setAttribute('transform',`translate(${X(state.objectX)} 240)`);
     $('candle').setAttribute('aria-valuenow',state.objectX);
     $('candle').setAttribute('aria-valuemax',(sorted()[0]?.x??0)-5);
-    $('candle').innerHTML=`<rect x="-28" y="-115" width="56" height="150" rx="12" fill="transparent"/>${candle(0,0)}${label(0,-104,'ろうそく','class="figure-label" style="fill:#9a7138"')}<rect x="-23" y="12" width="46" height="22" rx="11" fill="#fbefd9"/>${label(0,28,'↔','style="fill:#a87d3f;font-size:19px"')}`;
+    $('candle').innerHTML=`<rect x="-28" y="-115" width="56" height="150" rx="12" fill="transparent"/>${candle(0,0)}`;
     $('observer').innerHTML=`<g transform="translate(${X(O.EYE)} 240)"><path d="M-7 0 Q9 -21 26 0 Q9 21 -7 0Z" fill="white" stroke="#667f86" stroke-width="1.8"/><ellipse cx="1" rx="5" ry="10" fill="#497e7a"/><ellipse cx="-1" rx="2" ry="5" fill="#233c43"/></g>${label(899,288,'観測者')}`;
     let measures='';
     if($('show-distances').checked){
@@ -168,5 +217,6 @@
   $('remove-lens').addEventListener('click',()=>{if(state.lenses.length<=1)return;state.lenses=state.lenses.filter(l=>l.id!==state.selected);state.selected=state.lenses[0].id;render();});
   document.querySelectorAll('input[type=checkbox]').forEach(el=>el.addEventListener('change',render));
   $('reset').addEventListener('click',()=>{state=initial();document.querySelectorAll('input[type=checkbox]').forEach(el=>el.checked=el.defaultChecked);render();});
-  render();
+  new ResizeObserver(resizeScene).observe($('scene'));
+  resizeScene();
 })();

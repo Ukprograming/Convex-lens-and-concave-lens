@@ -5,24 +5,24 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f5f7f8">
   <title>レンズの実験室 — 光の進み方と像</title>
-  <link rel="stylesheet" href="style.css">
-  <script defer src="optics.js"></script>
-  <script defer src="app.js"></script>
+  <link rel="stylesheet" href="style.css?v=20260925">
+  <script defer src="optics.js?v=20260925-view"></script>
+  <script defer src="app.js?v=20260925-view"></script>
 </head>
 <body>
 <main>
   <header class="page-header">
     <h1>レンズの実験室</h1>
       <div class="modes" role="group" aria-label="レンズの種類">
-        <button type="button" data-mode="convex" aria-pressed="true"><span aria-hidden="true">()</span> 凸レンズ</button>
-        <button type="button" data-mode="concave" aria-pressed="false"><span aria-hidden="true">)(</span> 凹レンズ</button>
-        <button type="button" data-mode="none" aria-pressed="false"><span aria-hidden="true">—</span> レンズなし</button>
+        <button type="button" data-mode="convex" aria-pressed="true">凸レンズ</button>
+        <button type="button" data-mode="concave" aria-pressed="false">凹レンズ</button>
+        <button type="button" data-mode="none" aria-pressed="false">レンズなし</button>
       </div>
     <button id="add-lens" class="quiet-button" type="button">＋ レンズ追加</button>
     <button id="remove-lens" class="quiet-button" type="button" hidden>選択レンズを削除</button>
       <section class="display-block" aria-label="表示設定"><div class="checks">
         <label><input id="show-rays" type="checkbox" checked>光線</label>
-        <label><input id="show-distances" type="checkbox" checked>距離</label>
+        <label><input id="show-distances" type="checkbox">距離</label>
         <label><input id="show-formula" type="checkbox">数式</label>
         <label><input id="show-view" type="checkbox">見え方</label>
       </div></section>
@@ -32,7 +32,7 @@
   <section class="lab" aria-label="レンズのシミュレーション">
     <div class="experiment">
       <div class="diagram-wrap">
-        <div class="diagram-heading"><h2>光の進み方</h2><span id="image-badge" class="badge">倒立・実像</span></div>
+        <div class="diagram-heading"><span id="image-badge" class="badge">倒立・実像</span></div>
     <section id="formula-panel" class="formula-panel" hidden aria-label="距離とレンズの式">
       <div class="formula-heading"><h2 id="formula-title">レンズの式</h2><span class="equation"><span class="frac"><b>1</b><b>a</b></span> + <span class="frac"><b>1</b><b>b</b></span> = <span class="frac"><b>1</b><b>f</b></span></span><span class="magnification-equation">m = −b/a</span></div>
     </section>
@@ -45,11 +45,11 @@
           <defs>
             <pattern id="grid" width="30" height="30" patternUnits="userSpaceOnUse"><path d="M 30 0 L 0 0 0 30" fill="none" stroke="#e8edf0" stroke-width="0.7"/></pattern>
             <linearGradient id="glass"><stop stop-color="#9cdad7" stop-opacity=".2"/><stop offset=".5" stop-color="#63c4bf" stop-opacity=".5"/><stop offset="1" stop-color="#9cdad7" stop-opacity=".2"/></linearGradient>
-            <clipPath id="scene-clip"><rect x="8" y="40" width="944" height="355"/></clipPath>
-            <marker id="arrow-amber" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 1 L9 5 L0 9" fill="none" stroke="#cb8731" stroke-width="1.5"/></marker>
+            <clipPath id="scene-clip"><rect id="clip-area" width="960" height="470"/></clipPath>
+            <marker id="arrow-amber" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 1 L10 5 L0 9Z" fill="#cb8731"/></marker>
 
           </defs>
-          <rect width="960" height="470" fill="url(#grid)"/>
+          <rect id="grid-area" width="960" height="470" fill="url(#grid)"/>
           <g id="axis"></g><g id="rays" clip-path="url(#scene-clip)"></g><g id="lens"></g><g id="focus-handles"></g>
           <g id="image" clip-path="url(#scene-clip)"></g>
           <g id="observer"></g><g id="measurements"></g>
