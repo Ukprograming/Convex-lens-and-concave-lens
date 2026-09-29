@@ -137,11 +137,11 @@
     $('axis').innerHTML=axis+label(923,265,'光軸');
     drawLenses();drawRays(lenses,result);
     let img='';
-    if(result.kind==='real'||result.kind==='virtual'){
+    if($('show-rays').checked && (result.kind==='real'||result.kind==='virtual')){
       if(result.imageX>=-150 && result.imageX<=150)img=candle(X(result.imageX),240,result.m,true);
       else img=label(result.imageX<0?130:800,75,`${result.imageX<0?'←':'→'} 像は図の外`,'style="fill:#9374a4"');
     }
-    if(result.kind==='infinity')img=label(740,75,'像は無限遠');
+    if($('show-rays').checked && result.kind==='infinity')img=label(740,75,'像は無限遠');
     $('image').innerHTML=img;
     $('candle').setAttribute('transform',`translate(${X(state.objectX)} 240)`);
     $('candle').setAttribute('aria-valuenow',state.objectX);
