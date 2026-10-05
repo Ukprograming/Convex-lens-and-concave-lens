@@ -3,7 +3,9 @@
   'use strict';
   const $=id=>document.getElementById(id),O=window.Optics;
   const initial=()=>({objectX:-60,lenses:[{id:1,x:0,f:20}],selected:1,nextId:2,none:false});
-  let state=initial(),drag=null;
+  let state=initial(),drag=null,pinch=null;
+  const camera={x:480,y:235,zoom:1},pointers=new Map();
+  const MIN_ZOOM=.5,MAX_ZOOM=4;
   const X=x=>480+3*x,Y=y=>240-3*y;
   let viewport={left:0,top:0,width:960,height:470};
   const clamp=(n,lo,hi)=>Math.max(lo,Math.min(hi,n));
@@ -32,15 +34,33 @@
   function resizeScene(){
     const {width,height}=$('scene').getBoundingClientRect();
     if(!width||!height)return;
-    const scale=Math.min(width/960,height/470);
-    viewport={left:480-width/scale/2,top:235-height/scale/2,width:width/scale,height:height/scale};
+    const scale=Math.min(width/960,height/470)*camera.zoom;
+    viewport={left:camera.x-width/scale/2,top:camera.y-height/scale/2,width:width/scale,height:height/scale};
     $('scene').setAttribute('viewBox',`${viewport.left} ${viewport.top} ${viewport.width} ${viewport.height}`);
     for(const id of ['grid-area','clip-area']){
       const rect=$(id);
       for(const [key,value] of Object.entries({x:viewport.left,y:viewport.top,width:viewport.width,height:viewport.height}))rect.setAttribute(key,value);
     }
     render();
+    $('zoom-level').textContent=`${Math.round(camera.zoom*100)}%`;
+    $('zoom-out').disabled=camera.zoom<=MIN_ZOOM;
+    $('zoom-in').disabled=camera.zoom>=MAX_ZOOM;
   }
+  function scenePoint(point){
+    const rect=$('scene').getBoundingClientRect();
+    return {x:viewport.left+(point.clientX-rect.left)*viewport.width/rect.width,
+      y:viewport.top+(point.clientY-rect.top)*viewport.height/rect.height};
+  }
+  function zoomAt(value,point){
+    const zoom=clamp(value,MIN_ZOOM,MAX_ZOOM),anchor=point?scenePoint(point):{x:camera.x,y:camera.y};
+    const ratio=camera.zoom/zoom;
+    camera.x=anchor.x+(camera.x-anchor.x)*ratio;
+    camera.y=anchor.y+(camera.y-anchor.y)*ratio;
+    camera.zoom=zoom;resizeScene();
+  }
+  function resetView(){camera.x=480;camera.y=235;camera.zoom=1;resizeScene();}
+  // Keep touch targets at least 44 CSS pixels across, including when zoomed out.
+  function touchSize(size){return Math.max(size,44*viewport.width/$('scene').getBoundingClientRect().width);}
   // The flame tip is exactly 3 * HEIGHT above the axis for ray/image consistency.
   function candle(x,y,scale=1,ghost=false){
     return `<g transform="translate(${x} ${y}) scale(${scale})" ${ghost?'opacity=".5"':''}><path d="M-10 0 V-61 Q0 -67 10 -61 V0Z" fill="${ghost?'#d1c5e1':'#e4b76a'}" stroke="${ghost?'#8a729b':'#b5833d'}" stroke-width="1.2" ${ghost?'stroke-dasharray="4 3"':''}/><ellipse cy="-61" rx="10" ry="3" fill="${ghost?'#e2d9ee':'#f9dfaa'}"/><path d="M0 -62 V-70" stroke="#624637" stroke-width="1.5"/><path d="M0 -90 C-4 -80 -14 -77 -10 -68 C-6 -59 9 -60 10 -70 C12 -79 2 -82 0 -90Z" fill="${ghost?'#b9a5ce':'#ef9450'}"/><path d="M0 -80 C-7 -70 -3 -65 2 -67 C6 -69 3 -76 0 -80Z" fill="#ffe5a0"/></g>`;
@@ -57,10 +77,11 @@
     const list=active(),sel=selected();
     $('lens').innerHTML=list.map(l=>{
       const chosen=l.id===state.selected,[lo,hi]=lensLimits(l),name=l.f>0?'凸レンズ':'凹レンズ';
-      return `<g transform="translate(${X(l.x)} 240)" class="drag-handle lens-handle" data-drag="lens" data-id="${l.id}" tabindex="0" role="slider" aria-label="レンズ${l.id}の位置" aria-valuemin="${lo}" aria-valuemax="${hi}" aria-valuenow="${l.x}"><title>${name}${l.id}：ドラッグで移動、選択して種類を変更</title><rect x="-26" y="-161" width="52" height="322" rx="10" fill="transparent"/><path d="${l.f>0?'M0 -150 Q39 0 0 150 Q-39 0 0 -150Z':'M-19 -150 Q10 0 -19 150 H19 Q-10 0 19 -150Z'}" fill="url(#glass)" stroke="${chosen?'#157e76':'#89b6b2'}" stroke-width="${chosen?2.5:1.3}"/></g>`;
+      const hitWidth=touchSize(52);
+      return `<g transform="translate(${X(l.x)} 240)" class="drag-handle lens-handle" data-drag="lens" data-id="${l.id}" tabindex="0" role="slider" aria-label="レンズ${l.id}の位置" aria-valuemin="${lo}" aria-valuemax="${hi}" aria-valuenow="${l.x}"><title>${name}${l.id}：ドラッグで移動、選択して種類を変更</title><rect x="${-hitWidth/2}" y="-161" width="${hitWidth}" height="322" rx="10" fill="transparent"/><path d="${l.f>0?'M0 -150 Q39 0 0 150 Q-39 0 0 -150Z':'M-19 -150 Q10 0 -19 150 H19 Q-10 0 19 -150Z'}" fill="url(#glass)" stroke="${chosen?'#157e76':'#89b6b2'}" stroke-width="${chosen?2.5:1.3}"/></g>`;
     }).join('');
     // Only the selected lens has focus handles, preventing overlaps in compound systems.
-    $('focus-handles').innerHTML=state.none?'':[-1,1].map(sign=>`<g class="drag-handle focus-handle" data-drag="focus" data-id="${sel.id}" data-sign="${sign}" transform="translate(${X(sel.x+sign*Math.abs(sel.f))} 240)" tabindex="0" role="slider" aria-label="レンズ${sel.id}の${sign<0?'左':'右'}焦点F" aria-valuemin="10" aria-valuemax="50" aria-valuenow="${Math.abs(sel.f)}"><title>焦点Fをドラッグして焦点距離を変更</title><circle r="19" fill="transparent"/><circle r="7" fill="#e5f3ee" stroke="#157e76" stroke-width="2"/>${label(0,29,'F','style="fill:#157e76;font-size:17px;font-weight:bold"')}</g>`).join('');
+    $('focus-handles').innerHTML=state.none?'':[-1,1].map(sign=>`<g class="drag-handle focus-handle" data-drag="focus" data-id="${sel.id}" data-sign="${sign}" transform="translate(${X(sel.x+sign*Math.abs(sel.f))} 240)" tabindex="0" role="slider" aria-label="レンズ${sel.id}の${sign<0?'左':'右'}焦点F" aria-valuemin="10" aria-valuemax="50" aria-valuenow="${Math.abs(sel.f)}"><title>焦点Fをドラッグして焦点距離を変更</title><circle r="${touchSize(38)/2}" fill="transparent"/><circle r="7" fill="#e5f3ee" stroke="#157e76" stroke-width="2"/>${label(0,29,'F','style="fill:#157e76;font-size:17px;font-weight:bold"')}</g>`).join('');
   }
   function drawRays(lenses,result){
     let rays='';
@@ -82,9 +103,9 @@
         }
         if(ray.blocked)continue;
         const edgeX=(viewport.left+viewport.width-480)/3;
-        rays+=rayLine(ray,{x:edgeX,y:ray.y+ray.u*(edgeX-ray.x)},true);
+        if(edgeX>ray.x)rays+=rayLine(ray,{x:edgeX,y:ray.y+ray.u*(edgeX-ray.x)},true);
         if(result.kind==='virtual'){
-          const x=Math.max((viewport.left-480)/3,result.imageX);
+          const x=Math.min(ray.x,Math.max((viewport.left-480)/3,result.imageX));
           rays+=line(ray.x,ray.y,x,ray.y+ray.u*(x-ray.x),'#9c829f',true);
         }
       }
@@ -134,19 +155,21 @@
     $('observer-panel').hidden=!$('show-view').checked;
     let axis=line((viewport.left-480)/3,0,(viewport.left+viewport.width-480)/3,0,'#b8c6cc');
     for(let x=-140;x<=140;x+=10)axis+=line(x,-1,x,1,'#c2cdd2');
-    $('axis').innerHTML=axis+label(923,265,'光軸');
+    $('axis').innerHTML=axis+label(viewport.left+viewport.width-37,265,'光軸');
     drawLenses();drawRays(lenses,result);
     let img='';
     if($('show-rays').checked && (result.kind==='real'||result.kind==='virtual')){
-      if(result.imageX>=-150 && result.imageX<=150)img=candle(X(result.imageX),240,result.m,true);
-      else img=label(result.imageX<0?130:800,75,`${result.imageX<0?'←':'→'} 像は図の外`,'style="fill:#9374a4"');
+      const imageX=X(result.imageX);
+      if(imageX>=viewport.left && imageX<=viewport.left+viewport.width)img=candle(imageX,240,result.m,true);
+      else img=label(imageX<viewport.left?viewport.left+95:viewport.left+viewport.width-95,viewport.top+75,`${imageX<viewport.left?'←':'→'} 像は図の外`,'style="fill:#9374a4"');
     }
-    if($('show-rays').checked && result.kind==='infinity')img=label(740,75,'像は無限遠');
+    if($('show-rays').checked && result.kind==='infinity')img=label(camera.x+viewport.width*.27,viewport.top+75,'像は無限遠');
     $('image').innerHTML=img;
     $('candle').setAttribute('transform',`translate(${X(state.objectX)} 240)`);
     $('candle').setAttribute('aria-valuenow',state.objectX);
     $('candle').setAttribute('aria-valuemax',(sorted()[0]?.x??0)-5);
-    $('candle').innerHTML=`<rect x="-28" y="-115" width="56" height="150" rx="12" fill="transparent"/>${candle(0,0)}`;
+    const candleHitWidth=touchSize(56);
+    $('candle').innerHTML=`<rect x="${-candleHitWidth/2}" y="-115" width="${candleHitWidth}" height="150" rx="12" fill="transparent"/>${candle(0,0)}`;
     $('observer').innerHTML=`<g transform="translate(${X(O.EYE)} 240)"><path d="M-7 0 Q9 -21 26 0 Q9 21 -7 0Z" fill="white" stroke="#667f86" stroke-width="1.8"/><ellipse cx="1" rx="5" ry="10" fill="#497e7a"/><ellipse cx="-1" rx="2" ry="5" fill="#233c43"/></g>${label(899,288,'観測者')}`;
     let measures='';
     if($('show-distances').checked){
@@ -181,18 +204,71 @@
     }
     render();
   }
-  function worldX(event){return (new DOMPoint(event.clientX,event.clientY).matrixTransform($('scene').getScreenCTM().inverse()).x-480)/3;}
+  function worldX(event){return (scenePoint(event).x-480)/3;}
+  function beginPan(point){drag={type:'pan',clientX:point.clientX,clientY:point.clientY};pinch=null;}
+  function pinchPoints(){
+    const [a,b]=[...pointers.values()];
+    return {mid:{clientX:(a.clientX+b.clientX)/2,clientY:(a.clientY+b.clientY)/2},
+      distance:Math.max(1,Math.hypot(b.clientX-a.clientX,b.clientY-a.clientY))};
+  }
+  function beginPinch(){
+    const {mid,distance}=pinchPoints();
+    pinch={anchor:scenePoint(mid),distance,zoom:camera.zoom};drag=null;
+    $('scene').classList.add('is-panning');
+  }
+  function clearGesture(){
+    const ids=[...pointers.keys()];pointers.clear();drag=null;pinch=null;
+    $('scene').classList.remove('is-panning');
+    for(const id of ids)if($('scene').hasPointerCapture(id))$('scene').releasePointerCapture(id);
+  }
   $('candle').dataset.drag='candle';
   $('scene').addEventListener('pointerdown',event=>{
-    const target=event.target.closest('[data-drag]');if(!target||event.button!==0)return;
+    if(event.button!==0)return;
+    pointers.set(event.pointerId,{clientX:event.clientX,clientY:event.clientY});
+    $('scene').setPointerCapture(event.pointerId);event.preventDefault();
+    if(pointers.size>=2){beginPinch();return;}
+    const target=event.target.closest('[data-drag]');
+    if(!target){beginPan(event);$('scene').classList.add('is-panning');return;}
     const type=target.dataset.drag,id=Number(target.dataset.id),sign=Number(target.dataset.sign)||1;
     if(type!=='candle')state.selected=id;
     const l=selected(),anchor=type==='candle'?state.objectX:type==='lens'?l.x:l.x+sign*Math.abs(l.f);
     drag={type,id,sign,offset:worldX(event)-anchor};
-    $('scene').setPointerCapture(event.pointerId);event.preventDefault();render();
+    render();
   });
-  $('scene').addEventListener('pointermove',event=>{if(drag)move(drag.type,drag.id,worldX(event)-drag.offset,drag.sign);});
-  for(const name of ['pointerup','pointercancel','lostpointercapture'])$('scene').addEventListener(name,()=>{drag=null;});
+  $('scene').addEventListener('pointermove',event=>{
+    if(!pointers.has(event.pointerId))return;
+    pointers.set(event.pointerId,{clientX:event.clientX,clientY:event.clientY});event.preventDefault();
+    if(pinch){
+      const {mid,distance}=pinchPoints(),rect=$('scene').getBoundingClientRect();
+      const zoom=clamp(pinch.zoom*distance/pinch.distance,MIN_ZOOM,MAX_ZOOM);
+      const scale=Math.min(rect.width/960,rect.height/470)*zoom;
+      camera.x=pinch.anchor.x-(mid.clientX-rect.left-rect.width/2)/scale;
+      camera.y=pinch.anchor.y-(mid.clientY-rect.top-rect.height/2)/scale;
+      camera.zoom=zoom;resizeScene();
+    }else if(drag?.type==='pan'){
+      const rect=$('scene').getBoundingClientRect();
+      camera.x-=(event.clientX-drag.clientX)*viewport.width/rect.width;
+      camera.y-=(event.clientY-drag.clientY)*viewport.height/rect.height;
+      drag.clientX=event.clientX;drag.clientY=event.clientY;resizeScene();
+    }else if(drag)move(drag.type,drag.id,worldX(event)-drag.offset,drag.sign);
+  });
+  function endPointer(event){
+    if(!pointers.delete(event.pointerId))return;
+    if(pointers.size>=2)beginPinch();
+    else if(pointers.size===1){beginPan([...pointers.values()][0]);}
+    else{drag=null;pinch=null;$('scene').classList.remove('is-panning');}
+  }
+  for(const name of ['pointerup','pointercancel','lostpointercapture'])$('scene').addEventListener(name,endPointer);
+  window.addEventListener('blur',clearGesture);
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)clearGesture();});
+  $('scene').addEventListener('wheel',event=>{
+    event.preventDefault();if(pointers.size)return;
+    const delta=event.deltaY*(event.deltaMode===1?16:event.deltaMode===2?$('scene').clientHeight:1);
+    zoomAt(camera.zoom*Math.exp(-clamp(delta,-200,200)*.002),event);
+  },{passive:false});
+  $('zoom-in').addEventListener('click',()=>{clearGesture();zoomAt(camera.zoom*1.25);});
+  $('zoom-out').addEventListener('click',()=>{clearGesture();zoomAt(camera.zoom/1.25);});
+  $('reset-view').addEventListener('click',()=>{clearGesture();resetView();});
   $('scene').addEventListener('focusin',event=>{
     const target=event.target.closest('[data-drag]');
     if(target?.dataset.id && state.selected!==Number(target.dataset.id)){
@@ -216,7 +292,7 @@
   });
   $('remove-lens').addEventListener('click',()=>{if(state.lenses.length<=1)return;state.lenses=state.lenses.filter(l=>l.id!==state.selected);state.selected=state.lenses[0].id;render();});
   document.querySelectorAll('input[type=checkbox]').forEach(el=>el.addEventListener('change',render));
-  $('reset').addEventListener('click',()=>{state=initial();document.querySelectorAll('input[type=checkbox]').forEach(el=>el.checked=el.defaultChecked);render();});
+  $('reset').addEventListener('click',()=>{clearGesture();state=initial();document.querySelectorAll('input[type=checkbox]').forEach(el=>el.checked=el.defaultChecked);resetView();});
   new ResizeObserver(resizeScene).observe($('scene'));
   resizeScene();
 })();

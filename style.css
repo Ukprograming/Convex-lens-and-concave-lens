@@ -3,3 +3,14 @@
 @media(max-width:600px){main{padding:8px;gap:8px}.page-header{gap:6px}.page-header h1{font-size:16px;flex:1}.page-header .modes{order:3;width:100%}.modes button{flex:1;font-size:11px;padding:6px}.display-block{order:4;width:100%}.checks{justify-content:center;gap:20px}.quiet-button{font-size:10px;padding:5px 7px}#remove-lens{order:6}#reset{margin-left:0}.diagram-wrap{padding:0}.diagram-heading{gap:8px}.diagram-heading h2{font-size:11px}.badge{font-size:9px}.formula-panel{left:8px;top:8px;padding:6px 8px}.equation{font-size:14px}.magnification-equation{font-size:14px}.observer-panel{right:8px;top:8px;width:122px;padding:7px}.observer-panel h2{font-size:9px}}
 @media(max-height:500px) and (orientation:landscape){main{padding:5px 10px;gap:4px}.page-header{gap:3px 8px}.page-header h1{font-size:15px}.modes button,.quiet-button{min-height:26px;padding:4px 8px}.checks label{min-height:24px}.diagram-wrap{padding:0}.observer-panel{width:112px;padding:5px;gap:3px;right:8px;top:8px}.observer-panel h2{font-size:9px}.formula-panel{padding:5px 8px;top:8px}.formula-heading{gap:4px}.equation{font-size:14px}.magnification-equation{font-size:13px}}
 #axis,#rays,#image,#observer,#measurements{pointer-events:none}
+#scene{cursor:grab;user-select:none;-webkit-user-select:none;overscroll-behavior:contain}
+#scene.is-panning,#scene.is-panning .drag-handle,#scene.is-panning #candle{cursor:grabbing}
+.canvas-navigation{position:absolute;left:12px;bottom:12px;z-index:3;display:flex;align-items:center;background:#fffffff2;border:1px solid var(--line);border-radius:9px;box-shadow:0 2px 8px #243a430a;overflow:hidden;touch-action:manipulation;user-select:none;-webkit-user-select:none}
+.canvas-navigation button{border:0;background:transparent;color:var(--teal);min-width:44px;min-height:44px;padding:0 10px;font-size:20px}
+.canvas-navigation button:hover{background:#edf3f3}
+.canvas-navigation button:focus-visible{outline-offset:-3px}
+#zoom-level{width:52px;text-align:center;font-size:12px;font-variant-numeric:tabular-nums;color:#536971}
+#reset-view{border-left:1px solid var(--line);font-size:11px;white-space:nowrap}
+.canvas-help{position:absolute;right:14px;bottom:20px;margin:0;font-size:10px;color:#6b7d85;pointer-events:none;user-select:none;-webkit-user-select:none}
+@media(max-width:700px){.canvas-help{left:12px;right:auto;bottom:66px;font-size:9px}}
+@media(max-width:600px){.canvas-navigation{left:8px;bottom:8px}.canvas-help{left:8px;bottom:60px}}

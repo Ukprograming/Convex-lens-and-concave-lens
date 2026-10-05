@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f5f7f8">
   <title>凸レンズと凹レンズ — 光の進み方と像</title>
-  <link rel="stylesheet" href="style.css?v=20260925">
+  <link rel="stylesheet" href="style.css?v=20261006-navigation">
   <script defer src="optics.js?v=20260925-view"></script>
-  <script defer src="app.js?v=20260929-image-toggle"></script>
+  <script defer src="app.js?v=20261006-navigation"></script>
 </head>
 <body>
 <main>
@@ -32,6 +32,13 @@
   <section class="lab" aria-label="レンズのシミュレーション">
     <div class="experiment">
       <div class="diagram-wrap">
+        <div class="canvas-navigation" role="group" aria-label="キャンバスのズーム">
+          <button id="zoom-out" type="button" aria-label="縮小" title="縮小">−</button>
+          <output id="zoom-level" aria-label="ズーム倍率">100%</output>
+          <button id="zoom-in" type="button" aria-label="拡大" title="拡大">＋</button>
+          <button id="reset-view" type="button" title="ズームとパンを初期表示に戻す">表示を戻す</button>
+        </div>
+        <p id="canvas-help" class="canvas-help">余白をドラッグで移動 · ホイール／ピンチでズーム</p>
         <div class="diagram-heading"><span id="image-badge" class="badge">倒立・実像</span></div>
     <section id="formula-panel" class="formula-panel" hidden aria-label="距離とレンズの式">
       <div class="formula-heading"><h2 id="formula-title">レンズの式</h2><span class="equation"><span class="frac"><b>1</b><b>a</b></span> + <span class="frac"><b>1</b><b>b</b></span> = <span class="frac"><b>1</b><b>f</b></span></span><span class="magnification-equation">m = −b/a</span></div>
@@ -41,7 +48,7 @@
         <div class="view-window"><svg id="view" viewBox="0 0 220 220" role="img" aria-label="観測者から見たろうそく"></svg></div>
         <p id="view-title" aria-live="polite"></p>
       </aside>
-        <svg id="scene" viewBox="0 0 960 470" aria-label="ろうそく、レンズ、像、観測者の光線図">
+        <svg id="scene" viewBox="0 0 960 470" aria-label="ろうそく、レンズ、像、観測者の光線図" aria-describedby="canvas-help">
           <defs>
             <pattern id="grid" width="30" height="30" patternUnits="userSpaceOnUse"><path d="M 30 0 L 0 0 0 30" fill="none" stroke="#e8edf0" stroke-width="0.7"/></pattern>
             <linearGradient id="glass"><stop stop-color="#9cdad7" stop-opacity=".2"/><stop offset=".5" stop-color="#63c4bf" stop-opacity=".5"/><stop offset="1" stop-color="#9cdad7" stop-opacity=".2"/></linearGradient>
