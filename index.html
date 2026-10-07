@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f5f7f8">
   <title>凸レンズと凹レンズ — 光の進み方と像</title>
-  <link rel="stylesheet" href="style.css?v=20261006-navigation">
-  <script defer src="optics.js?v=20260925-view"></script>
-  <script defer src="app.js?v=20261006-navigation"></script>
+  <link rel="stylesheet" href="style.css?v=20261007-observer">
+  <script defer src="optics.js?v=20261007-observer"></script>
+  <script defer src="app.js?v=20261007-observer"></script>
 </head>
 <body>
 <main>
@@ -59,7 +59,7 @@
           <rect id="grid-area" width="960" height="470" fill="url(#grid)"/>
           <g id="axis"></g><g id="rays" clip-path="url(#scene-clip)"></g><g id="lens"></g><g id="focus-handles"></g>
           <g id="image" clip-path="url(#scene-clip)"></g>
-          <g id="observer"></g><g id="measurements"></g>
+          <g id="observer" class="drag-handle observer-handle" data-drag="observer" tabindex="0" role="group" aria-label="観測者の目の位置"></g><g id="measurements"></g>
           <g id="candle" role="slider" tabindex="0" aria-label="ろうそくの位置（物体距離）" aria-valuemin="-140" aria-valuemax="-5" aria-valuenow="-60"></g>
         </svg>
       </div>

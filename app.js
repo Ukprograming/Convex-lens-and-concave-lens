@@ -2,7 +2,7 @@
 (() => {
   'use strict';
   const $=id=>document.getElementById(id),O=window.Optics;
-  const initial=()=>({objectX:-60,lenses:[{id:1,x:0,f:20}],selected:1,nextId:2,none:false});
+  const initial=()=>({objectX:-60,eye:{x:O.EYE,y:0},lenses:[{id:1,x:0,f:20}],selected:1,nextId:2,none:false});
   let state=initial(),drag=null,pinch=null;
   const camera={x:480,y:235,zoom:1},pointers=new Map();
   const MIN_ZOOM=.5,MAX_ZOOM=4;
@@ -71,7 +71,7 @@
   }
   function lensLimits(lens){
     const list=sorted(),i=list.findIndex(l=>l.id===lens.id);
-    return [Math.max(-100,state.objectX+5,i?list[i-1].x+8:-100),Math.min(100,i<list.length-1?list[i+1].x-8:100)];
+    return [Math.max(-100,state.objectX+5,i?list[i-1].x+8:-100),Math.min(100,state.eye.x-10,i<list.length-1?list[i+1].x-8:100)];
   }
   function drawLenses(){
     const list=active(),sel=selected();
@@ -121,24 +121,29 @@
       grid+=`<rect x="${110-half}" y="${110-half}" width="${2*half}" height="${2*half}" opacity="${Math.max(.18,1-depth/1200)}"/>`;
     }
     grid+='</g><path d="M104 110 H116 M110 104 V116" stroke="#a3bcb2" stroke-width=".8"/>';
-    if(Number.isFinite(result.imageX) && result.imageX<O.EYE){
-      const half=Math.min(10000,400*25/(O.EYE-result.imageX));
-      grid+=`<rect data-image-plane="true" x="${110-half}" y="${110-half}" width="${2*half}" height="${2*half}" fill="none" stroke="#8baea0" stroke-dasharray="3 4" stroke-width="1.2"/>`;
+    if(Number.isFinite(result.imageX) && result.imageX<state.eye.x){
+      const distance=state.eye.x-result.imageX,half=Math.min(10000,400*25/distance);
+      const center=110+400*state.eye.y/distance;
+      grid+=`<rect data-image-plane="true" x="${110-half}" y="${center-half}" width="${2*half}" height="${2*half}" fill="none" stroke="#8baea0" stroke-dasharray="3 4" stroke-width="1.2"/>`;
     }
     return grid;
   }
   function drawView(result,obs){
-    const radius=Number.isFinite(obs.fieldSlope)?400*obs.fieldSlope:1000;
-    let svg=`<defs><filter id="defocus" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="9"/></filter><clipPath id="view-frame"><rect width="220" height="220"/></clipPath><clipPath id="view-aperture"><circle cx="110" cy="110" r="${radius}"/></clipPath></defs><g clip-path="url(#view-frame)">${viewGrid(result)}`;
+    const apertures=obs.apertures.filter(a=>Number.isFinite(a.radius));
+    const clips=apertures.map((a,i)=>`<clipPath id="view-aperture-${i}"><circle cx="110" cy="${110-400*a.center}" r="${400*a.radius}"/></clipPath>`).join('');
+    let svg=`<defs><filter id="defocus" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="9"/></filter><clipPath id="view-frame"><rect width="220" height="220"/></clipPath>${clips}</defs><g clip-path="url(#view-frame)">${viewGrid(result)}`;
     let title='';
     if(obs.status==='converging'){
-      const scale=3.4+1.8*Math.min(1,O.EYE/Math.max(O.EYE,result.imageX));
-      svg+=`<g filter="url(#defocus)" opacity=".85" data-blurred="true">${candle(110,80+90*scale,scale)}</g>`;title='ピンぼけ（模式図）';
+      const distance=state.eye.x-result.lastX;
+      const scale=3.4+1.8*Math.min(1,distance/Math.max(distance,result.imageX-result.lastX));
+      svg+=`<g filter="url(#defocus)" opacity=".85" data-blurred="true">${candle(110,80+90*scale+400*state.eye.y/distance,scale)}</g>`;title='ピンぼけ（模式図）';
     }else if(Number.isFinite(obs.slope)){
       // Perspective projection uses tan(angle), not angle: large images grow
       // beyond the viewport instead of saturating or disappearing altogether.
-      svg+=`<g clip-path="url(#view-aperture)" data-projected="true">${candle(110,110,obs.slope*400/90)}</g>`;
-      title=obs.slope>=0?'正立':'倒立';
+      svg+=apertures.map((_,i)=>`<g clip-path="url(#view-aperture-${i})">`).join('');
+      svg+=`<g data-projected="true">${candle(110,110-400*obs.baseSlope,obs.sizeSlope*400/90)}</g>`;
+      svg+='</g>'.repeat(apertures.length);
+      title=obs.sizeSlope>=0?'正立':'倒立';
       if(result.kind==='infinity')title+='・無限遠';
     }
     svg+='</g>';
@@ -170,7 +175,11 @@
     $('candle').setAttribute('aria-valuemax',(sorted()[0]?.x??0)-5);
     const candleHitWidth=touchSize(56);
     $('candle').innerHTML=`<rect x="${-candleHitWidth/2}" y="-115" width="${candleHitWidth}" height="150" rx="12" fill="transparent"/>${candle(0,0)}`;
-    $('observer').innerHTML=`<g transform="translate(${X(O.EYE)} 240)"><path d="M-7 0 Q9 -21 26 0 Q9 21 -7 0Z" fill="white" stroke="#667f86" stroke-width="1.8"/><ellipse cx="1" rx="5" ry="10" fill="#497e7a"/><ellipse cx="-1" rx="2" ry="5" fill="#233c43"/></g>${label(899,288,'観測者')}`;
+    const eye=state.eye,hit=touchSize(48);
+    $('observer').setAttribute('transform',`translate(${X(eye.x)} ${Y(eye.y)})`);
+    $('observer').setAttribute('aria-label',`観測者の目の位置：横 ${fmt(eye.x)} cm、高さ ${fmt(eye.y)} cm。矢印キーで上下左右に移動`);
+    $('observer').dataset.x=eye.x;$('observer').dataset.y=eye.y;
+    $('observer').innerHTML=`<title>目を上下左右にドラッグして見え方を変更</title><rect x="${-hit/2}" y="${-hit/2}" width="${hit}" height="${hit}" rx="12" fill="transparent"/><path d="M-7 0 Q9 -21 26 0 Q9 21 -7 0Z" fill="white" stroke="#667f86" stroke-width="1.8"/><ellipse cx="1" rx="5" ry="10" fill="#497e7a"/><ellipse cx="-1" rx="2" ry="5" fill="#233c43"/>${label(9,48,'観測者')}`;
     let measures='';
     if($('show-distances').checked){
       if(state.none)measures=dimension(state.objectX,0,413,`a = ${fmt(-state.objectX)} cm`,'#ab854b');
@@ -184,13 +193,13 @@
       }
     }
     $('measurements').innerHTML=measures;
-    if($('show-view').checked)drawView(result,O.systemObservation(state.objectX,lenses,result));
+    if($('show-view').checked)drawView(result,O.systemObservation(state.objectX,lenses,result,state.eye));
   }
   // New lenses occupy a free gap; lens order is preserved during dragging.
   function newLensPosition(){
-    const list=sorted(),lo=Math.max(-100,state.objectX+5),last=list[list.length-1];
-    if(last.x+40<=100)return {x:last.x+40};
-    const bounds=[lo-8,...list.map(l=>l.x),108];
+    const list=sorted(),lo=Math.max(-100,state.objectX+5),hi=Math.min(100,state.eye.x-10),last=list[list.length-1];
+    if(last.x+40<=hi)return {x:last.x+40};
+    const bounds=[lo-8,...list.map(l=>l.x),hi+8];
     let best=null;
     for(let i=1;i<bounds.length;i++)if(bounds[i]-bounds[i-1]>=16 && (!best || bounds[i]-bounds[i-1]>best.gap))best={x:Math.round((bounds[i]+bounds[i-1])/2),gap:bounds[i]-bounds[i-1]};
     return best;
@@ -205,6 +214,10 @@
     render();
   }
   function worldX(event){return (scenePoint(event).x-480)/3;}
+  function moveEye(x,y){
+    state.eye={x:clamp(Math.round(x),sorted().at(-1).x+10,240),y:clamp(Math.round(y),-100,100)};
+    render();
+  }
   function beginPan(point){drag={type:'pan',clientX:point.clientX,clientY:point.clientY};pinch=null;}
   function pinchPoints(){
     const [a,b]=[...pointers.values()];
@@ -230,6 +243,11 @@
     const target=event.target.closest('[data-drag]');
     if(!target){beginPan(event);$('scene').classList.add('is-panning');return;}
     const type=target.dataset.drag,id=Number(target.dataset.id),sign=Number(target.dataset.sign)||1;
+    if(type==='observer'){
+      const point=scenePoint(event);
+      drag={type,offsetX:(point.x-480)/3-state.eye.x,offsetY:(240-point.y)/3-state.eye.y};
+      return;
+    }
     if(type!=='candle')state.selected=id;
     const l=selected(),anchor=type==='candle'?state.objectX:type==='lens'?l.x:l.x+sign*Math.abs(l.f);
     drag={type,id,sign,offset:worldX(event)-anchor};
@@ -250,6 +268,9 @@
       camera.x-=(event.clientX-drag.clientX)*viewport.width/rect.width;
       camera.y-=(event.clientY-drag.clientY)*viewport.height/rect.height;
       drag.clientX=event.clientX;drag.clientY=event.clientY;resizeScene();
+    }else if(drag?.type==='observer'){
+      const point=scenePoint(event);
+      moveEye((point.x-480)/3-drag.offsetX,(240-point.y)/3-drag.offsetY);
     }else if(drag)move(drag.type,drag.id,worldX(event)-drag.offset,drag.sign);
   });
   function endPointer(event){
@@ -277,7 +298,14 @@
     }
   });
   $('scene').addEventListener('keydown',event=>{
-    const t=event.target.closest('[data-drag]');if(!t || !['ArrowLeft','ArrowRight'].includes(event.key))return;
+    const t=event.target.closest('[data-drag]');if(!t)return;
+    if(t.dataset.drag==='observer' && ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)){
+      event.preventDefault();const step=event.shiftKey?10:1;
+      moveEye(state.eye.x+(event.key==='ArrowLeft'?-step:event.key==='ArrowRight'?step:0),
+        state.eye.y+(event.key==='ArrowDown'?-step:event.key==='ArrowUp'?step:0));
+      return;
+    }
+    if(!['ArrowLeft','ArrowRight'].includes(event.key))return;
     event.preventDefault();const step=(event.shiftKey?10:1)*(event.key==='ArrowLeft'?-1:1),id=Number(t.dataset.id),sign=Number(t.dataset.sign)||1,type=t.dataset.drag;
     const l=state.lenses.find(item=>item.id===id),v=type==='candle'?state.objectX:type==='lens'?l.x:l.x+sign*Math.abs(l.f);
     move(type,id,v+step,sign);

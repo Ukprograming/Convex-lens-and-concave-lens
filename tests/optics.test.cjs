@@ -115,3 +115,63 @@ test('compound projection reaches the final lens even with a clipped tip',()=>{
   close(obs.slope,-.75);
   assert.ok(obs.fieldSlope>0);
 });
+
+test('moving the eye changes direct perspective and keeps the candle upright',()=>{
+  const r=O.system(-60,[]);
+  for(const eye of [{x:80,y:40},{x:140,y:-50},{x:240,y:0}]){
+    const obs=O.systemObservation(-60,[],r,eye),distance=eye.x+60;
+    close(obs.slope,(O.HEIGHT-eye.y)/distance);
+    close(obs.baseSlope,-eye.y/distance);
+    close(obs.sizeSlope,O.HEIGHT/distance);
+    assert.equal(obs.status,'clear');assert.deepEqual(obs.apertures,[]);
+  }
+});
+
+test('off-axis single and compound views agree with image perspective',()=>{
+  for(const lenses of [[{x:0,f:20}],[{x:0,f:-20}],[{x:0,f:20},{x:40,f:-30}]]){
+    const r=O.system(-60,lenses);
+    for(const eye of [{x:90,y:30},{x:140,y:-40},{x:230,y:50}]){
+      const obs=O.systemObservation(-60,lenses,r,eye),distance=eye.x-r.imageX;
+      close(obs.slope,(r.imageY-eye.y)/distance);
+      close(obs.baseSlope,-eye.y/distance);
+      close(obs.sizeSlope,r.imageY/distance);
+    }
+  }
+});
+
+test('shifted aperture intersection agrees with forward rays to the moving pupil',()=>{
+  for(const lenses of [[{x:0,f:20}],[{x:0,f:-20}],[{x:0,f:20},{x:40,f:-30},{x:80,f:25}]]){
+    const result=O.system(-60,lenses);
+    for(const eye of [{x:140,y:0},{x:140,y:60},{x:210,y:-60}]){
+      const obs=O.systemObservation(-60,lenses,result,eye);
+      for(const height of [0,5,15,30]){
+        const a=O.trace(-60,lenses,0,height,false),b=O.trace(-60,lenses,1,height,false);
+        const d=eye.x-a.x,base=a.y+d*a.u,coefficient=b.y+d*b.u-base;
+        const ray=O.trace(-60,lenses,(eye.y-base)/coefficient,height,false);
+        close(ray.y+d*ray.u,eye.y);
+        const slope=-ray.u;
+        assert.equal(obs.apertures.every(ap=>Math.abs(slope-ap.center)<=ap.radius+1e-8),
+          ray.points.slice(1).every(p=>Math.abs(p.y)<=O.APERTURE+1e-8));
+      }
+    }
+  }
+});
+
+test('infinite image keeps its angular size while eye height shifts the aperture',()=>{
+  const lenses=[{x:0,f:20}],r=O.system(-20,lenses);
+  const low=O.systemObservation(-20,lenses,r,{x:140,y:-30});
+  const high=O.systemObservation(-20,lenses,r,{x:140,y:30});
+  close(low.sizeSlope,O.HEIGHT/20);close(high.sizeSlope,low.sizeSlope);
+  close(low.baseSlope,0);close(high.baseSlope,0);
+  close(low.apertures[0].center,30/140);close(high.apertures[0].center,-30/140);
+});
+
+test('eye crossing the real image changes the defocus condition without NaN',()=>{
+  const lenses=[{x:0,f:20}],r=O.system(-60,lenses);
+  for(const x of [20,30]){
+    const obs=O.systemObservation(-60,lenses,r,{x,y:20});
+    assert.equal(obs.status,'converging');
+    assert.ok(obs.apertures.every(a=>!Number.isNaN(a.center) && !Number.isNaN(a.radius)));
+  }
+  assert.notEqual(O.systemObservation(-60,lenses,r,{x:31,y:20}).status,'converging');
+});

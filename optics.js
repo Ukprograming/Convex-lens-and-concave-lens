@@ -52,18 +52,33 @@
     }
     return {...stages[stages.length-1],stages};
   }
-  function systemObservation(objectX,lenses,result){
+  function systemObservation(objectX,lenses,result,eye={x:EYE,y:0}){
     const r0=trace(objectX,lenses,0,HEIGHT,false),r1=trace(objectX,lenses,1,HEIGHT,false);
-    const distance=EYE-r0.x;
+    const distance=eye.x-r0.x;
     const base=r0.y+distance*r0.u,coefficient=r1.y+distance*r1.u-base;
-    if(result.kind==='real' && result.imageX>=EYE-1e-8)return {status:'converging',angle:null};
-    if(Math.abs(coefficient)<1e-9)return {status:'blocked',angle:null};
+    const converging=result.kind==='real' && result.imageX>=eye.x-1e-8;
+    // Trace backwards from the pupil. Each circular lens aperture becomes a
+    // shifted circle in angular view coordinates; their intersection is visible.
+    let x=eye.x,y=eye.y,u=0,dy=0,du=-1;
+    const apertures=[];
+    for(const lens of [...lenses].sort((a,b)=>b.x-a.x)){
+      const d=lens.x-x;y+=d*u;dy+=d*du;x=lens.x;
+      apertures.push(Math.abs(dy)<1e-9
+        ? {center:0,radius:Math.abs(y)<=APERTURE?Infinity:0}
+        : {center:-y/dy,radius:APERTURE/Math.abs(dy)});
+      u+=y/lens.f;du+=dy/lens.f;
+    }
+    const fieldSlope=Math.min(Infinity,...apertures.map(a=>a.radius));
+    if(Math.abs(coefficient)<1e-9)return {status:converging?'converging':'blocked',angle:null,apertures,fieldSlope};
     // A clipped flame tip does not mean the whole candle is invisible. Keep the
     // ideal projection and clip its visible area at every lens aperture instead.
-    const ray=trace(objectX,lenses,-base/coefficient,HEIGHT,false);
+    const ray=trace(objectX,lenses,(eye.y-base)/coefficient,HEIGHT,false);
+    const bottom=trace(objectX,lenses,0,0,false);
+    const bottomRay=trace(objectX,lenses,(eye.y-bottom.y-distance*bottom.u)/coefficient,0,false);
     const maxHeight=Math.max(0,...ray.points.slice(1).map(p=>Math.abs(p.y)));
-    const fieldSlope=maxHeight>1e-9?Math.abs(ray.u)*APERTURE/maxHeight:Infinity;
-    return {status:maxHeight>APERTURE?'blocked':'clear',angle:Math.atan(-ray.u),slope:-ray.u,fieldSlope};
+    return {status:converging?'converging':maxHeight>APERTURE?'blocked':'clear',
+      angle:Math.atan(-ray.u),slope:-ray.u,baseSlope:-bottomRay.u,
+      sizeSlope:bottomRay.u-ray.u,fieldSlope,apertures};
   }
   const api={HEIGHT,EYE,APERTURE,calculate,eyeRay,observation,trace,system,systemObservation};
   if(typeof module!=='undefined' && module.exports) module.exports=api;
